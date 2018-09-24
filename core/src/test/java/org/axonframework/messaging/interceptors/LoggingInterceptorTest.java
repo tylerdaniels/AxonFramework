@@ -63,7 +63,7 @@ public class LoggingInterceptorTest {
     }
 
     @Test
-    public void testIncomingLogging_NullReturnValue() throws Exception {
+    public void testIncomingLoggingNullReturnValue() throws Exception {
         when(mockLogger.isInfoEnabled()).thenReturn(true);
         when(interceptorChain.proceed()).thenReturn(null);
 
@@ -78,7 +78,7 @@ public class LoggingInterceptorTest {
     }
 
     @Test
-    public void testSuccessfulExecution_VoidReturnValue() throws Exception {
+    public void testSuccessfulExecutionVoidReturnValue() throws Exception {
         when(mockLogger.isInfoEnabled()).thenReturn(true);
         when(interceptorChain.proceed()).thenReturn(null);
 
@@ -93,7 +93,7 @@ public class LoggingInterceptorTest {
     }
 
     @Test
-    public void testSuccessfulExecution_CustomReturnValue() throws Exception {
+    public void testSuccessfulExecutionCustomReturnValue() throws Exception {
         when(interceptorChain.proceed()).thenReturn(new StubResponse());
         when(mockLogger.isInfoEnabled()).thenReturn(true);
 
