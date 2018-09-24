@@ -16,18 +16,27 @@
 
 package org.axonframework.messaging.interceptors;
 
+import org.axonframework.messaging.ExecutionException;
 import org.axonframework.messaging.InterceptorChain;
 import org.axonframework.messaging.Message;
+import org.axonframework.messaging.MessageDispatchInterceptor;
 import org.axonframework.messaging.MessageHandlerInterceptor;
+import org.axonframework.messaging.unitofwork.CurrentUnitOfWork;
+import org.axonframework.messaging.unitofwork.ExecutionResult;
 import org.axonframework.messaging.unitofwork.UnitOfWork;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.List;
+import java.util.function.BiFunction;
+import java.util.stream.Collectors;
+
 import static java.lang.String.format;
 
 /**
- * Message Handler Interceptor that logs incoming messages and their result to a SLF4J logger. Allow configuration of
- * the name under which the logger should log the statements.
+ * {@link MessageDispatchInterceptor} and {@link MessageHandlerInterceptor} implementation that logs dispathed and
+ * incoming messages, and their result, to a SLF4J logger. Allow configuration of the name under which the logger should
+ * log the statements.
  * <p/>
  * Incoming messages and successful executions are logged at the {@code INFO} level. Processing errors are logged
  * using the {@code WARN} level.
@@ -35,7 +44,8 @@ import static java.lang.String.format;
  * @author Allard Buijze
  * @since 0.6
  */
-public class LoggingInterceptor<T extends Message<?>> implements MessageHandlerInterceptor<T> {
+public class LoggingInterceptor<T extends Message<?>>
+        implements MessageDispatchInterceptor<T>, MessageHandlerInterceptor<T> {
 
     private final Logger logger;
 
@@ -61,6 +71,41 @@ public class LoggingInterceptor<T extends Message<?>> implements MessageHandlerI
     }
 
     @Override
+    public BiFunction<Integer, T, T> handle(List<? extends T> messages) {
+        StringBuilder sb = new StringBuilder(
+                String.format("Dispatched messages: [%s]",
+                              messages.stream()
+                                      .map(m -> m.getPayloadType().getSimpleName())
+                                      .collect(Collectors.joining(", ")))
+        );
+
+        //noinspection Duplicates - Pulled from org.axonframework.eventhandling.interceptors.EventLoggingInterceptor
+        CurrentUnitOfWork.ifStarted(unitOfWork -> {
+            Message<?> message = unitOfWork.getMessage();
+            if (message == null) {
+                sb.append(" while processing an operation not tied to an incoming message");
+            } else {
+                sb.append(String.format(" while processing a [%s]", message.getPayloadType().getSimpleName()));
+            }
+            ExecutionResult executionResult = unitOfWork.getExecutionResult();
+            if (executionResult != null) {
+                if (executionResult.isExceptionResult()) {
+                    @SuppressWarnings("ThrowableResultOfMethodCallIgnored")
+                    Throwable exception = executionResult.getExceptionResult();
+                    exception = exception instanceof ExecutionException ? exception.getCause() : exception;
+                    sb.append(String.format(" which failed with a [%s]", exception.getClass().getSimpleName()));
+                } else if (executionResult.getResult() != null) {
+                    sb.append(String.format(" which yielded a [%s] return value",
+                                            executionResult.getResult().getClass().getSimpleName()));
+                }
+            }
+        });
+
+        logger.info(sb.toString());
+        return (i, m) -> m;
+    }
+
+    @Override
     public Object handle(UnitOfWork<? extends T> unitOfWork, InterceptorChain interceptorChain)
             throws Exception {
         T message = unitOfWork.getMessage();
@@ -68,8 +113,8 @@ public class LoggingInterceptor<T extends Message<?>> implements MessageHandlerI
         try {
             Object returnValue = interceptorChain.proceed();
             logger.info("[{}] executed successfully with a [{}] return value",
-                    message.getPayloadType().getSimpleName(),
-                    returnValue == null ? "null" : returnValue.getClass().getSimpleName());
+                        message.getPayloadType().getSimpleName(),
+                        returnValue == null ? "null" : returnValue.getClass().getSimpleName());
             return returnValue;
         } catch (Exception t) {
             logger.warn(format("[%s] execution failed:", message.getPayloadType().getSimpleName()), t);
